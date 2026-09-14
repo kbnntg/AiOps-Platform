@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aiops-backend
+  namespace: privatization
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: aiops-backend-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "events", "namespaces", "nodes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "deployments/scale"]
+  verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: aiops-backend-binding
+subjects:
+- kind: ServiceAccount
+  name: aiops-backend
+  namespace: privatization
+roleRef:
+  kind: ClusterRole
+  name: aiops-backend-role
+  apiGroup: rbac.authorization.k8s.io

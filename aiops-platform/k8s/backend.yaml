@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aiops-backend
+  namespace: privatization
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aiops-backend
+  template:
+    metadata:
+      labels:
+        app: aiops-backend
+    spec:
+      serviceAccountName: aiops-backend
+      containers:
+      - name: backend
+        image: aiops-backend:v1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MYSQL_HOST
+          value: "mysql-service"
+        - name: MYSQL_USER
+          value: "root"
+        - name: MYSQL_DB
+          value: "aiops_platform"
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: aiops-secret
+              key: mysql-password
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aiops-secret
+              key: jwt-secret
+        - name: PROMETHEUS_URL
+          value: "http://prometheus:9090"
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aiops-secret
+              key: api-key
+        - name: API_URL
+          value: "https://api.deepseek.com/v1"
+        - name: LOG_MODEL_NAME
+          value: "deepseek-chat"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aiops-backend
+  namespace: privatization
+spec:
+  selector:
+    app: aiops-backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: NodePort

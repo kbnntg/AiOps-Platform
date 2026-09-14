@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: privatization
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      # 抓取自己（用于监控 Prometheus 本身）
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # 自动发现采集器 DaemonSet
+      - job_name: 'node-monitor'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - privatization
+        relabel_configs:
+          # 只保留标签为 app=node-monitor 的 Pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: node-monitor
+            action: keep
+          # 把 Pod IP 作为抓取地址
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: $1:8000
+          # 保留 Pod 名作为 instance 标签
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: instance
