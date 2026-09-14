@@ -275,11 +275,15 @@ https://docs/images/login.png
 
 深紫渐变背景 + 粒子动画 + 玻璃拟态卡片
 
+![](C:\Users\Administrator\Desktop\文档截图\login.png)
+
 ### Dashboard
 
 https://docs/images/dashboard.png
 
 节点状态卡片 + CPU/内存趋势图
+
+![](C:\Users\Administrator\Desktop\文档截图\dashboard.png)
 
 ### Pod 管理
 
@@ -287,11 +291,17 @@ https://docs/images/pods.png
 
 Pod 列表 + 日志/事件/删除操作
 
+![](C:\Users\Administrator\Desktop\文档截图\pod.png)
+
 ### 实时日志 + AI 分析
 
 https://docs/images/ai-analysis.png
 
 WebSocket 实时日志 + AI 分析结果
+
+![](C:\Users\Administrator\Desktop\文档截图\log.png)
+
+![](C:\Users\Administrator\Desktop\文档截图\AI_Log.png)
 
 ### 告警历史
 
@@ -299,11 +309,15 @@ https://docs/images/alerts.png
 
 告警记录 + AI 建议
 
+![](C:\Users\Administrator\Desktop\文档截图\alert_history.png)
+
 ### 审计日志
 
 https://docs/images/audit.png
 
 所有变更操作留痕
+
+![](C:\Users\Administrator\Desktop\文档截图\audit.png)
 
 ## 🔑 环境变量说明
 
