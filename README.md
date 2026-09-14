@@ -289,7 +289,7 @@ kubectl -n privatization get svc
 
 ### 实时日志 + AI 分析
 
-![AI 分析](docs/images/ai-analysis.png)
+https://github.com/kbnntg/AIOps-/blob/main/aiops-platform/docs/images/ai-analysis.png
 
 *WebSocket 实时日志 + AI 分析结果*
 
