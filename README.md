@@ -271,37 +271,37 @@ kubectl -n privatization get svc
 
 ### 登录页
 
-![登录页](docs/images/login.png)
+![登录页](aiops-platform/docs/images/login.png)
 
 *深紫渐变背景 + 粒子动画 + 玻璃拟态卡片*
 
 ### Dashboard
 
-![Dashboard](docs/images/dashboard.png)
+![Dashboard](aiops-platform/docs/images/dashboard.png)
 
 *节点状态卡片 + CPU/内存趋势图*
 
 ### Pod 管理
 
-![Pod 管理](docs/images/pods.png)
+![Pod 管理](aiops-platform/docs/images/pods.png)
 
 *Pod 列表 + 日志/事件/删除操作*
 
 ### 实时日志 + AI 分析
 
-https://github.com/kbnntg/AIOps-/blob/main/aiops-platform/docs/images/ai-analysis.png
+![AI 分析](aiops-platform/docs/images/ai-analysis.png)
 
 *WebSocket 实时日志 + AI 分析结果*
 
 ### 告警历史
 
-![告警历史](docs/images/alerts.png)
+![告警历史](aiops-platform/docs/images/alerts.png)
 
 *告警记录 + AI 建议*
 
 ### 审计日志
 
-![审计日志](docs/images/audit.png)
+![审计日志](aiops-platform/docs/images/audit.png)
 
 ## 🔑 环境变量说明
 
