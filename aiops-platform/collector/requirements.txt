@@ -1,5 +1,0 @@
-psutil
-prometheus_client
-requests
-pymysql
-openai
