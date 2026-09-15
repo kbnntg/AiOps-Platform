@@ -310,7 +310,7 @@
 
   ### Pod 管理
 
-   ![Pod页](docs/images/pods.png)
+   ![Pod页](docs/images/pod.png)
 
   *Pod 列表 + 日志/事件/诊断/删除*
 
