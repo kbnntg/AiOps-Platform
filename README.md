@@ -304,37 +304,37 @@
 
   ### Dashboard 资源总览
 
-  https://docs/images/dashboard.png
+   ![面板页](docs/images/dashboard.png)
 
   *节点状态卡片 + CPU/内存实时趋势图*
 
   ### Pod 管理
 
-  https://docs/images/pods.png
+   ![Pod页](docs/images/pods.png)
 
   *Pod 列表 + 日志/事件/诊断/删除*
 
   ### 实时日志 + AI 分析
 
-  https://docs/images/ai-analysis.png
+  ![分析页](docs/images/AI_Log.png)
 
   *WebSocket 实时日志 + AI 智能分析*
 
   ### 多信号融合诊断
 
-  https://docs/images/diagnose.png
+  ![混合分析页](docs/images/ai_d.png)
 
   *四类信号交叉验证 + AI 根因推断*
 
   ### 告警历史
 
-  https://docs/images/alerts.png
+  ![告警历史页](docs/images/alert_history.png)
 
   *告警记录 + AI 建议 + 状态管理*
 
   ### 审计日志
 
-  https://docs/images/audit.png
+  ![审计页](docs/images/audit.png)
 
   *所有变更操作留痕*
 
