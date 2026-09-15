@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-monitor
+  namespace: privatization
+  labels:
+    app: node-monitor
+spec:
+  selector:
+    matchLabels:
+      app: node-monitor
+  template:
+    metadata:
+      labels:
+        app: node-monitor
+    spec:
+      hostPID: true
+      containers:
+      - name: monitor
+        image: aiops-collector:v1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: metrics
+        env:
+        - name: CPU_MAXUSE
+          value: "80"
+        - name: MEMORY_MAXUSE
+          value: "90"
+        - name: DISK_MAXUSE
+          value: "80"
+        - name: INTERVAL
+          value: "3"
+        - name: ALTER_INTERVAL
+          value: "5"
+        - name: DISK_PATH
+          value: "/"
+        - name: MYSQL_HOST
+          value: "mysql-service"
+        - name: MYSQL_USER
+          value: "root"
+        - name: MYSQL_DB
+          value: "aiops_platform"
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: aiops-secret
+              key: mysql-password
+        - name: URL
+          valueFrom:
+            secretKeyRef:
+              name: aiops-secret
+              key: webhook-url
+              optional: true
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aiops-secret
+              key: api-key
+              optional: true
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-monitor
+  namespace: privatization
+  labels:
+    app: node-monitor
+spec:
+  selector:
+    app: node-monitor
+  clusterIP: None
+  ports:
+  - name: metrics
+    port: 8000
+    targetPort: 8000
