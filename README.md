@@ -298,7 +298,7 @@
 
   ### 登录页
 
-  https://docs/images/login.png
+  ![登录页](docs/images/login.png)
 
   *深紫渐变背景 + 粒子动画 + 玻璃拟态卡片*
 
