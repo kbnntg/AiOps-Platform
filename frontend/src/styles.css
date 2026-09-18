@@ -1,0 +1,147 @@
+:root {
+  --primary: #6366f1;
+  --primary-light: #818cf8;
+  --primary-dark: #4f46e5;
+  --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  --card-shadow-hover: 0 8px 32px rgba(99, 102, 241, 0.15);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --sidebar-gradient: linear-gradient(180deg, #1e1b4b 0%, #312e81 100%);
+}
+
+/* 覆盖 Element Plus 主色 */
+:root {
+  --el-color-primary: #6366f1;
+  --el-color-primary-light-3: #818cf8;
+  --el-color-primary-light-5: #a5b4fc;
+  --el-color-primary-light-7: #c7d2fe;
+  --el-color-primary-light-8: #ddd6fe;
+  --el-color-primary-light-9: #eef2ff;
+  --el-color-primary-dark-2: #4f46e5;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ========== 滚动条美化 ========== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.5); }
+
+/* ========== 卡片通用样式 ========== */
+.el-card {
+  border-radius: 12px !important;
+  border: none !important;
+  box-shadow: var(--card-shadow) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.el-card:hover {
+  box-shadow: var(--card-shadow-hover) !important;
+  transform: translateY(-2px);
+}
+
+/* ========== 表格美化 ========== */
+.el-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+.el-table th {
+  background: #f8fafc !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+}
+
+/* ========== 按钮动效 ========== */
+.el-button {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border-radius: 8px !important;
+}
+.el-button:not(.is-disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+.el-button--primary {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+  border: none !important;
+}
+
+/* ========== 淡入动画 ========== */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in-up { animation: fadeInUp 0.5s ease-out; }
+
+/* ========== 进度条渐变 ========== */
+.el-progress-bar__inner {
+  background: linear-gradient(90deg, #6366f1, #a855f7) !important;
+}
+
+/* ================================================================
+   自定义工作面板背景（html.has-custom-bg 仅在用户启用背景时生效）
+   目标：背景可见，同时保证卡片 / 表格文字清晰可读
+   ================================================================ */
+html.has-custom-bg body {
+  background: transparent;
+}
+
+/* 主内容区透出背景 */
+html.has-custom-bg .main-content {
+  background: transparent !important;
+}
+
+/* 侧边栏改为半透明深色玻璃，与背景更融合 */
+html.has-custom-bg .sidebar {
+  background: linear-gradient(180deg, rgba(30, 27, 75, 0.88) 0%, rgba(49, 46, 129, 0.84) 100%) !important;
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+
+/* 卡片：毛玻璃 */
+html.has-custom-bg .el-card,
+html.has-custom-bg .node-card,
+html.has-custom-bg .chart-card {
+  background: var(--app-card-bg, rgba(255, 255, 255, 0.86)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+
+/* 表格：单元格透明，行/表头用半透明白保证可读 */
+html.has-custom-bg .el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: var(--app-card-bg, rgba(255, 255, 255, 0.86));
+  --el-table-header-bg-color: rgba(248, 250, 252, 0.82);
+  --el-table-row-hover-bg-color: rgba(99, 102, 241, 0.1);
+  --el-table-border-color: rgba(148, 163, 184, 0.3);
+  --el-table-header-text-color: #475569;
+  --el-table-text-color: #1e293b;
+  --el-fill-color-lighter: rgba(255, 255, 255, 0.42);
+}
+
+/* 固定列需要不透明底色，避免横向滚动时内容透出 */
+html.has-custom-bg .el-table td.el-table-fixed-column--left,
+html.has-custom-bg .el-table td.el-table-fixed-column--right,
+html.has-custom-bg .el-table th.el-table-fixed-column--left,
+html.has-custom-bg .el-table th.el-table-fixed-column--right {
+  background-color: var(--app-card-bg-solid, rgba(255, 255, 255, 0.95)) !important;
+}
+
+html.has-custom-bg .el-table__empty-block {
+  background: transparent;
+}
+
+/* 加载遮罩同样淡化，避免整块白底挡住背景 */
+html.has-custom-bg .el-loading-mask {
+  background-color: rgba(248, 250, 252, 0.55);
+}
