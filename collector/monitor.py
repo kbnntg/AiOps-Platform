@@ -4,6 +4,7 @@ from collections import deque
 
 import psutil
 import AI
+from aggregation import AlertAggregator
 from load_config import load_config
 from Prometheus_config import (
     cpu_use_gauge, free_use_gauge, disk_use_gauge,
@@ -11,9 +12,9 @@ from Prometheus_config import (
     network_send_gauge, network_resv_gauge, port_num
 )
 from mysql_config import insert_data, insert_alert_history
-from alter import log_alter
+from alter import log_alter, log_alter_aggregated
 from history import get_history
-from logger import logger_alter
+# from logger import logger_alter
 
 
 # 9-16新增滑动窗口触发告警
@@ -34,15 +35,16 @@ class SildWindows:
 
         # 窗口不满就不告警
         if len(self.values) < self.window_size:
-            return False
+            return False, None
 
-        # 统计窗口内超过阈值点数
-        over_count = 0
-        for v in self.values:
-            if v >= threshold:
-                over_count += 1
-
-        ratio = over_count/self.window_size
+        over_count = sum(1 for v in self.values if v >= threshold)
+        ratio = over_count / self.window_size
+        stats = {
+            "count": len(self.values),
+            "avg": round(sum(self.values) / len(self.values), 1),
+            "max": round(max(self.values), 1),
+            "over": over_count,
+        }
 
         # 判断条件\
         current_time = time.time()
@@ -50,28 +52,18 @@ class SildWindows:
             self.last_alert_time = current_time
             # 清空告警窗口
             self.values.clear()
-            return True
-        return False
-
-    # 创建窗口信息
-    def stats(self, threshold: float) -> dict:
-        if not self.values:
-            return {"count": 0, "avg": 0, "max": 0, "over": 0}
-        over = 0
-        for v in self.values:
-            if v >= threshold:
-                over += 1
-        return {
-            "count": len(self.values),
-            "avg": round(sum(self.values) / len(self.values), 1),
-            "max": round(max(self.values), 1),
-            "over": over,
-        }
+            return True, stats
+        return False, None
 
 
 def main():
     cfg = load_config()
     port_num(8000)
+
+    # 告警聚合配置
+    AGGREGATE_WINDOW = int(os.getenv('AGGREGATE_WINDOW', '300'))    # 5分钟
+    aggregator = AlertAggregator(window_size=AGGREGATE_WINDOW)
+    print(f'[启动]告警聚合窗口：{AGGREGATE_WINDOW}秒')
 
     # 滑动窗口配置
     WINDOW_SIZE = int(os.getenv('ALERT_WINDOW_SIZE', '10'))
@@ -123,7 +115,7 @@ def main():
             )
 
             # 日志
-            logger_alter(None, system_time, cpu_use, free_use, disk_use)
+            # logger_alter(None, system_time, cpu_use, free_use, disk_use)
 
             # Prometheus 指标
             cpu_use_gauge.set(cpu_use)
@@ -149,18 +141,22 @@ def main():
             # ========== 告警判断 ==========
 
             # 创建告警判断
-            cpu_alert = cpu_window.add(cpu_use, cfg['CPU_MAXUSE'])
-            mem_alert = mem_window.add(free_use, cfg['MEMORY_MAXUSE'])
-            disk_alert = disk_window.add(disk_use, cfg['DISK_MAXUSE'])
+            cpu_alert, cpu_stats = cpu_window.add(cpu_use, cfg['CPU_MAXUSE'])
+            mem_alert, mem_stats = mem_window.add(free_use, cfg['MEMORY_MAXUSE'])
+            disk_alert, disk_stats = disk_window.add(disk_use, cfg['DISK_MAXUSE'])
 
             # CPU告警
             if cpu_alert:
-                stats = cpu_window.stats(cfg['CPU_MAXUSE'])
                 history = get_history(cfg['cursor'], 'cpu_usage')
                 advice = AI.ai_monitor('CPU', cpu_use, cfg['CPU_MAXUSE'], history)
                 print(f'[告警] CPU持续超过阈值{cfg["CPU_MAXUSE"]}%，当前{cpu_use}%，'
-                      f'窗口内超阈值 {stats["over"]}/{stats["count"]} 次')
-                log_alter(cfg['URL'], system_time, 'CPU', cfg['CPU_MAXUSE'], advice)
+                      f'窗口内超阈值 {cpu_stats["over"]}/{cpu_stats["count"]} 次')
+
+                # 加入聚合器，不直接发送
+                full_alert = aggregator.add_alert(
+                    node=node_name, resource='CPU', value=cpu_use, threshold=cfg['CPU_MAXUSE'], timestamp=system_time
+                )
+                # log_alter(cfg['URL'], system_time, 'CPU', cfg['CPU_MAXUSE'], advice)
                 if cfg['cursor']:
                     insert_alert_history(cfg['cursor'], cfg['conn'], {
                         'resource': 'CPU', 'value': cpu_use,
@@ -169,12 +165,18 @@ def main():
                     })
 
             if mem_alert:
-                stats = mem_window.stats(cfg['MEMORY_MAXUSE'])
                 history = get_history(cfg['cursor'], 'memory_usage')
                 advice = AI.ai_monitor('内存', free_use, cfg['MEMORY_MAXUSE'], history)
                 print(f'[告警] 内存持续超过阈值{cfg["MEMORY_MAXUSE"]}%，当前{free_use}%，'
-                      f'窗口内超阈值 {stats["over"]}/{stats["count"]} 次')
-                log_alter(cfg['URL'], system_time, '内存', cfg['MEMORY_MAXUSE'], advice)
+                      f'窗口内超阈值 {mem_stats["over"]}/{mem_stats["count"]} 次')
+
+                aggregator.add_alert(
+                    node=node_name, resource='内存',
+                    value=free_use, threshold=cfg['MEMORY_MAXUSE'],
+                    timestamp=system_time
+                )
+
+                # log_alter(cfg['URL'], system_time, '内存', cfg['MEMORY_MAXUSE'], advice)
                 if cfg['cursor']:
                     insert_alert_history(cfg['cursor'], cfg['conn'], {
                         'resource': '内存', 'value': free_use,
@@ -183,18 +185,34 @@ def main():
                     })
 
             if disk_alert:
-                stats = disk_window.stats(cfg['DISK_MAXUSE'])
                 history = get_history(cfg['cursor'], 'disk_usage')
                 advice = AI.ai_monitor('磁盘', disk_use, cfg['DISK_MAXUSE'], history)
                 print(f'[告警] 磁盘持续超过阈值{cfg["DISK_MAXUSE"]}%，当前{disk_use}%，'
-                      f'窗口内超阈值 {stats["over"]}/{stats["count"]} 次')
-                log_alter(cfg['URL'], system_time, '磁盘', cfg['DISK_MAXUSE'], advice)
+                      f'窗口内超阈值 {disk_stats["over"]}/{disk_stats["count"]} 次')
+
+                aggregator.add_alert(
+                    node=node_name, resource='磁盘',
+                    value=disk_use, threshold=cfg['DISK_MAXUSE'],
+                    timestamp=system_time
+                )
+
+                # log_alter(cfg['URL'], system_time, '磁盘', cfg['DISK_MAXUSE'], advice)
                 if cfg['cursor']:
                     insert_alert_history(cfg['cursor'], cfg['conn'], {
                         'resource': '磁盘', 'value': disk_use,
                         'threshold': cfg['DISK_MAXUSE'],
                         'node': node_name, 'ai_advice': advice
                     })
+            # 调用AI进行分析处理，alerts就是汇聚告警参数
+            if aggregator.should_flush():
+                alerts = aggregator.flush()
+                print(f'[聚合] 窗口到期，聚合 {len(alerts)} 条告警')
+
+                if alerts:
+                    # AI模块获取参数进行分析
+                    aggregate_advice = AI.ai_aggregate(alerts)
+                    # 发送URL请求
+                    log_alter_aggregated(cfg['URL'], alerts, aggregate_advice)
 
             time.sleep(cfg['INTERVAL'])
 

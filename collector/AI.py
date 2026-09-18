@@ -37,3 +37,56 @@ def ai_monitor(resource, current_value, threshold, context_data):
     except Exception as e:
         print(f"LLM 分析失败: {e}")
         return None
+
+
+def ai_aggregate(alerts: list) -> str:
+    """
+    告警聚合分析：把多条告警一起交给大模型，推断共同根因
+    """
+    api_key = os.getenv('API_KEY')
+    base_url = os.getenv('API_URL', 'https://api.deepseek.com/v1')
+    model_name = os.getenv('MODEL_NAME', 'deepseek-chat')
+
+    if not api_key:
+        return None
+
+    if not alerts:
+        return None
+
+    # 格式化为文本
+    alert_lines = []
+    for a in alerts:
+        alert_lines.append(
+            f"- [{a['timestamp']}] {a['node']} {a['resource']} "
+            f"当前 {a['value']}% (阈值 {a['threshold']}%)"
+        )
+    alert_text = "\n".join(alert_lines)
+
+    prompt = f"""你是一个资深 SRE。以下是过去 {len(alerts)} 条告警记录：
+
+{alert_text}
+
+请分析这些告警：
+
+1. **共同根因**：这些告警是否存在共同的根因？如果有，明确指出。
+2. **关联分析**：不同节点/资源之间有什么关联？
+3. **排查优先级**：建议先排查什么？
+4. **操作建议**：给出 3-5 条可执行的排查命令。
+
+输出格式：简洁的 Markdown，直接给结论。
+如果无法确定共同根因，说明"可能是独立故障"，并分别给出建议。
+"""
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=2048,
+            timeout=120
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"AI 聚合分析失败: {e}")
+        return None
