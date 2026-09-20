@@ -9,7 +9,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.websockets import WebSocketDisconnect
 
 from core.config import settings
-from routers import auth, pods, deployments, metrics, alerts, audit
+from routers import auth, pods, deployments, metrics, alerts, audit, topology, copilot
 
 _executor = ThreadPoolExecutor(max_workers=4)
 
@@ -35,6 +35,8 @@ app.include_router(deployments.router)
 app.include_router(metrics.router)
 app.include_router(alerts.router)
 app.include_router(audit.Router)
+app.include_router(topology.router)
+app.include_router(copilot.router)
 
 
 # 全部拿到app上
