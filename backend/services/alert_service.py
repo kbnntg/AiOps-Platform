@@ -56,6 +56,8 @@ class AlertService:
                     "id": r["id"], "resource": r["resource"], "value": r["value"],
                     "threshold": r["threshold"], "node": r["node"],
                     "ai_advice": r["ai_advice"], "status": r["status"],
+                    "raw_count": r.get("raw_count", 1),
+                    "is_false_positive": r.get("is_false_positive", 0),
                     "triggered_at": str(r["triggered_at"]),
                     "resolved_at": str(r["resolved_at"]) if r["resolved_at"] else None,
                     "resolved_by": r["resolved_by"],
