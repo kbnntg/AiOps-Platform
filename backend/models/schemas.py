@@ -1,4 +1,6 @@
 # 此模块用来定义模型类，以便后续接口传参方便
+from typing import Optional, List
+
 from pydantic import BaseModel, Field
 
 
@@ -25,4 +27,15 @@ class ScaleRequest(BaseModel):
 
 # 定义告警处理请求模型
 class AlertResolveRequest(BaseModel):
-    alter_id: int
+    alert_id: int
+
+
+# AI Copilot
+class ChatMessage(BaseModel):
+    role: str  # user或assistant
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[List[ChatMessage]] = None
