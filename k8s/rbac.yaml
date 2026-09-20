@@ -9,15 +9,34 @@ kind: ClusterRole
 metadata:
   name: aiops-backend-role
 rules:
+# Core API：Pod、Service、Event、Namespace、Node
 - apiGroups: [""]
-  resources: ["pods", "pods/log", "events", "namespaces", "nodes"]
+  resources:
+    - pods
+    - pods/log
+    - events
+    - namespaces
+    - nodes
+    - services
   verbs: ["get", "list", "watch"]
+
+# 删除 Pod（高危操作）
 - apiGroups: [""]
   resources: ["pods"]
   verbs: ["delete"]
+
+# Apps API：Deployment、ReplicaSet（拓扑推导要用 ReplicaSet）
 - apiGroups: ["apps"]
-  resources: ["deployments", "deployments/scale"]
+  resources:
+    - deployments
+    - deployments/scale
+    - replicasets
   verbs: ["get", "list", "watch", "patch", "update"]
+
+# Networking API：Ingress（拓扑推导要用）
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
