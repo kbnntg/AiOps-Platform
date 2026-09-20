@@ -1,7 +1,58 @@
 <template>
   <div class="dashboard fade-in-up">
-    <!-- 节点卡片 -->
-    <el-row :gutter="20">
+    <!-- ========== 告警治理指标卡片 ========== -->
+    <el-row :gutter="20" class="metrics-row" v-if="metrics">
+      <el-col :span="6">
+        <div class="metric-card">
+          <div class="metric-icon blue">
+            <el-icon><DataLine /></el-icon>
+          </div>
+          <div class="metric-content">
+            <div class="metric-value">{{ metrics.total_raw || 0 }}</div>
+            <div class="metric-label">原始告警数</div>
+          </div>
+        </div>
+      </el-col>
+
+      <el-col :span="6">
+        <div class="metric-card">
+          <div class="metric-icon green">
+            <el-icon><TrendCharts /></el-icon>
+          </div>
+          <div class="metric-content">
+            <div class="metric-value">{{ metrics.compression_rate || 0 }}x</div>
+            <div class="metric-label">告警压缩率</div>
+          </div>
+        </div>
+      </el-col>
+
+      <el-col :span="6">
+        <div class="metric-card">
+          <div class="metric-icon orange">
+            <el-icon><Warning /></el-icon>
+          </div>
+          <div class="metric-content">
+            <div class="metric-value">{{ metrics.false_positive_rate || 0 }}%</div>
+            <div class="metric-label">误报率</div>
+          </div>
+        </div>
+      </el-col>
+
+      <el-col :span="6">
+        <div class="metric-card">
+          <div class="metric-icon purple">
+            <el-icon><Timer /></el-icon>
+          </div>
+          <div class="metric-content">
+            <div class="metric-value">{{ formatDuration(metrics.mttr_seconds) }}</div>
+            <div class="metric-label">平均修复时间</div>
+          </div>
+        </div>
+      </el-col>
+    </el-row>
+
+    <!-- ========== 节点状态卡片 ========== -->
+    <el-row :gutter="20" style="margin-top: 20px">
       <el-col :span="8" v-for="(node, idx) in nodes" :key="node.name">
         <div class="node-card" :style="{ animationDelay: idx * 0.1 + 's' }">
           <div class="node-header">
@@ -15,27 +66,27 @@
           </div>
 
           <div class="metric-row">
-            <div class="metric-label">
+            <div class="metric-label-row">
               <span>CPU</span>
-              <span class="metric-value">{{ node.cpu || 0 }}%</span>
+              <span class="metric-value-text">{{ node.cpu || 0 }}%</span>
             </div>
             <el-progress :percentage="node.cpu || 0" :color="getColor(node.cpu)"
                          :stroke-width="10" :show-text="false" />
           </div>
 
           <div class="metric-row">
-            <div class="metric-label">
+            <div class="metric-label-row">
               <span>内存</span>
-              <span class="metric-value">{{ node.memory || 0 }}%</span>
+              <span class="metric-value-text">{{ node.memory || 0 }}%</span>
             </div>
             <el-progress :percentage="node.memory || 0" :color="getColor(node.memory)"
                          :stroke-width="10" :show-text="false" />
           </div>
 
           <div class="metric-row">
-            <div class="metric-label">
+            <div class="metric-label-row">
               <span>磁盘</span>
-              <span class="metric-value">{{ node.disk || 0 }}%</span>
+              <span class="metric-value-text">{{ node.disk || 0 }}%</span>
             </div>
             <el-progress :percentage="node.disk || 0" :stroke-width="10" :show-text="false" />
           </div>
@@ -43,7 +94,7 @@
       </el-col>
     </el-row>
 
-    <!-- 趋势图 -->
+    <!-- ========== CPU 趋势 ========== -->
     <div class="chart-card">
       <div class="chart-header">
         <div class="chart-title">
@@ -59,6 +110,7 @@
       <ResourceChart :data="cpuData" :height="'320px'" />
     </div>
 
+    <!-- ========== 内存趋势 ========== -->
     <div class="chart-card">
       <div class="chart-header">
         <div class="chart-title">
@@ -74,12 +126,14 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { getNodes, getCpu, getMemory } from '@/api/metrics'
+import { getAlertMetrics } from '@/api/alerts'
 import ResourceChart from '@/components/ResourceChart.vue'
 
 const nodes = ref<any[]>([])
 const cpuData = ref<any[]>([])
 const memData = ref<any[]>([])
 const hours = ref(1)
+const metrics = ref<any>(null)
 
 function getColor(v: number): string {
   if (v > 80) return '#f43f5e'
@@ -87,17 +141,84 @@ function getColor(v: number): string {
   return '#10b981'
 }
 
+function formatDuration(seconds: number): string {
+  if (!seconds) return '—'
+  if (seconds < 60) return seconds + 's'
+  if (seconds < 3600) return Math.round(seconds / 60) + 'min'
+  return (seconds / 3600).toFixed(1) + 'h'
+}
+
 async function loadNodes() { nodes.value = await getNodes() as any }
 async function loadCharts() {
   cpuData.value = await getCpu(hours.value) as any
   memData.value = await getMemory(hours.value) as any
 }
+async function loadMetrics() {
+  try {
+    metrics.value = await getAlertMetrics()
+  } catch (e) {
+    console.error('加载告警指标失败', e)
+  }
+}
 
-onMounted(() => { loadNodes(); loadCharts() })
+onMounted(() => {
+  loadNodes()
+  loadCharts()
+  loadMetrics()
+})
 </script>
 
 <style scoped>
 .dashboard { padding-bottom: 24px; }
+
+/* ========== 告警治理指标卡 ========== */
+.metrics-row { margin-bottom: 20px; }
+
+.metric-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: cardSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.metric-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(99, 102, 241, 0.15);
+}
+
+.metric-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #fff;
+  flex-shrink: 0;
+}
+.metric-icon.blue { background: linear-gradient(135deg, #6366f1, #818cf8); }
+.metric-icon.green { background: linear-gradient(135deg, #10b981, #34d399); }
+.metric-icon.orange { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
+.metric-icon.purple { background: linear-gradient(135deg, #a855f7, #c084fc); }
+
+.metric-content { flex: 1; }
+.metric-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.metric-label {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
 
 /* ========== 节点卡片 ========== */
 .node-card {
@@ -182,14 +303,14 @@ onMounted(() => { loadNodes(); loadCharts() })
 }
 
 .metric-row { margin-bottom: 16px; }
-.metric-label {
+.metric-label-row {
   display: flex;
   justify-content: space-between;
   margin-bottom: 8px;
   font-size: 13px;
   color: #64748b;
 }
-.metric-value {
+.metric-value-text {
   font-weight: 600;
   color: #1e293b;
   font-variant-numeric: tabular-nums;

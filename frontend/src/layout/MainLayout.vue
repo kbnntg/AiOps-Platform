@@ -102,6 +102,8 @@ const isMobile = ref(window.innerWidth < 768)
 const menuItems = computed(() => {
   const items = [
     { path: '/dashboard', title: '资源总览', icon: 'Odometer' },
+    { path: '/topology', title: '服务拓扑', icon: 'Share' },
+    { path: '/copilot', title: 'AI Copilot', icon: 'ChatDotRound' },
     { path: '/pods', title: 'Pod 管理', icon: 'Box' },
     { path: '/deployments', title: '副本管理', icon: 'Operation' },
     { path: '/alerts', title: '告警历史', icon: 'Bell' },
