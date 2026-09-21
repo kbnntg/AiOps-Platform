@@ -290,7 +290,7 @@ aiops-platform/
 ### 一键部署
 
 ```
-git clone https://github.com/你的用户名/aiops-platform.git
+git clone https://github.com/kbnntg/aiops-platform.git
 cd aiops-platform
 chmod +x deploy.sh
 ./deploy.sh
