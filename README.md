@@ -1,8 +1,8 @@
 # AIOps 智能运维平台
 
-基于 Kubernetes 的云原生智能运维平台，集 **节点监控、SRE 级告警治理、服务拓扑、AI Copilot、智能诊断、操作审计** 于一体。
+基于 Kubernetes 的云原生智能运维平台，集 **节点监控、SRE 级告警治理、服务拓扑、AI Copilot、集群巡检、RAG 知识库、智能诊断、操作审计** 于一体。
 
-> 从单机 Python 脚本演进而来，完成 **容器化 → K8s 部署 → Web 平台化 → AI 智能化 → Agent 化** 的完整升级。
+> 从单机 Python 脚本演进而来，完成 **容器化 → K8s 部署 → Web 平台化 → AI 智能化 → Agent 化 → 知识增强** 的完整升级。
 
 ------
 
@@ -26,7 +26,7 @@
 | **AI 根因**  | 批量告警交给大模型推断共同根因     | 关联分析       |
 | **量化指标** | 压缩率、误报率、MTTA、MTTR         | 治理效果可衡量 |
 
-### 二、五层 AI 能力
+### 二、七层 AI 能力
 
 | 层级  | 能力                    | 说明                                                         |
 | :---- | :---------------------- | :----------------------------------------------------------- |
@@ -34,21 +34,9 @@
 | **2** | AI 日志分析             | 一键分析 Pod 日志，输出问题摘要、可能原因、排查步骤          |
 | **3** | 多信号融合诊断          | 聚合 Prometheus 指标 + Pod 日志 + K8s 事件 + 历史告警，AI 交叉验证 |
 | **4** | 告警聚合根因            | 5 分钟窗口内多条告警批量分析，生成一条根因告警               |
-| **5** | **AI Copilot（Agent）** | 基于 Function Calling，AI 自主调用 10 个工具查询集群，SSE 流式输出，标注数据来源 |
-
-**AI Copilot 是核心差异化功能。** 它不是"调 API 生成文本"，而是能**主动调用工具**：
-
-```
-用户：nginx 这个 Deployment 有几个副本？
-  ↓
-AI：我需要调用 list_deployments
-  ↓
-后端：执行工具，拿到真实数据
-  ↓
-AI：nginx 有 2 个副本，均已就绪 [来源: list_deployments]
-```
-
-
+| **5** | **AI Copilot（Agent）** | 基于 Function Calling，AI 自主调用 15 个工具，SSE 流式输出，标注数据来源 |
+| **6** | **集群巡检**            | 11 条规则扫描集群配置隐患，输出健康分 + 修复建议             |
+| **7** | **RAG 知识库**          | 历史告警向量化检索，诊断时自动注入相似案例，Copilot 可主动查询 |
 
 ### 三、服务拓扑图
 
@@ -62,6 +50,47 @@ Ingress → Service → Pod ← ReplicaSet ← Deployment
 
 前端用 ECharts Graph 力导向布局渲染，节点颜色表示健康度，点击查看详情。
 
+### 四、Human-in-the-loop 写操作
+
+Copilot 支持修改集群，但**AI 不直接执行**：
+
+```
+用户：把 nginx 扩到 5 个副本
+  ↓
+AI：调用 scale_deployment 工具
+  ↓
+后端：检测到写操作，返回待确认（不执行）
+  ↓
+前端：渲染确认卡片 "将 nginx 从 2 副本调到 5 副本"
+  ↓
+用户点"确认执行"
+  ↓
+后端：真正执行 + 写审计日志（标记为 COPILOT_XXX）
+```
+
+
+
+**设计原则：AI 只提议，用户有最终决定权，所有操作可追溯。**
+
+### 五、RAG 知识库
+
+```
+索引流程（离线）：
+  历史告警 → 拼成文本 → BGE Embedding → 存入 ChromaDB
+                                              ↓
+检索流程（在线）：
+  诊断触发 / 用户提问 → query 转向量 → Chroma 检索 top-5 → 注入 Prompt
+```
+
+
+
+**两个集成入口：**
+
+| 入口             | 触发方式    | 场景                       |
+| :--------------- | :---------- | :------------------------- |
+| **诊断自动检索** | 系统自动    | 每次诊断前检索历史相似案例 |
+| **Copilot 工具** | AI 主动调用 | 用户问"以前有类似问题吗"   |
+
 ------
 
 ## 🏗️ 系统架构
@@ -70,7 +99,7 @@ Ingress → Service → Pod ← ReplicaSet ← Deployment
 ┌──────────────────────────────────────────────────────┐
 │                    用户浏览器                         │
 │          Vue3 + TypeScript + Element Plus             │
-│      Dashboard / 拓扑图 / Copilot / Pod管理 / ...      │
+│  Dashboard/拓扑/Copilot/Pod管理/巡检/知识库/...        │
 └────────────────────────┬─────────────────────────────┘
                          │ HTTP / SSE / WebSocket
 ┌────────────────────────▼─────────────────────────────┐
@@ -82,12 +111,14 @@ Ingress → Service → Pod ← ReplicaSet ← Deployment
 │              后端（FastAPI + Uvicorn）                │
 │  ┌────────┬────────┬────────┬────────┬────────────┐  │
 │  │ JWT认证 │ K8s API│ Prom API│拓扑推导 │ AI Copilot │  │
+│  ├────────┼────────┼────────┼────────┼────────────┤  │
+│  │ 巡检引擎│ RAG检索 │ 多信号诊断│ 告警聚合 │ 审计日志 │  │
 │  └────────┴────────┴────────┴────────┴────────────┘  │
 └────┬────────────┬────────────┬────────────┬──────────┘
      │            │            │            │
 ┌────▼────┐  ┌───▼────┐  ┌────▼─────┐  ┌───▼────────┐
 │  MySQL  │  │ K8s    │  │Prometheus│  │ DeepSeek   │
-│  存储   │  │ API    │  │  TSDB    │  │   大模型    │
+│  存储   │  │ API    │  │  TSDB    │  │  + BGE     │
 └────▲────┘  └────────┘  └────▲─────┘  └────────────┘
      │                        │
 ┌────┴────────────────────────┴─────────────────────┐
@@ -107,28 +138,25 @@ Ingress → Service → Pod ← ReplicaSet ← Deployment
 
 - 多维度采集：CPU、内存、磁盘、磁盘 I/O、网络流量
 - DaemonSet 部署，挂载宿主机 `/proc`、`/sys`
-- 滑动窗口告警（过滤抖动）
-- 告警聚合（窗口内合并）
+- 滑动窗口告警（过滤抖动）+ 告警聚合（窗口内合并）
+- 4 个量化指标：压缩率、误报率、MTTA、MTTR
 - Webhook 通知（企业微信/钉钉/飞书）
 
-### 二、AI 智能分析（5 层）
+### 二、AI 智能分析（7 层）
 
-- AI 告警分析
-- AI 日志分析
-- 多信号融合诊断
-- 告警聚合根因
-- AI Copilot（Agent）
+- AI 告警分析、日志分析、多信号融合诊断
+- 告警聚合根因、AI Copilot（Agent）
+- 集群巡检、RAG 知识库
 
 ### 三、服务拓扑图
 
 - K8s 资源关系自动推导
 - ECharts Graph 力导向布局
-- 健康度可视化
-- 点击节点查看详情
+- 健康度可视化 + 点击节点查看详情
 
 ### 四、Kubernetes 资源管理
 
-- Pod 管理：列表、实时日志、事件、删除
+- Pod 管理：列表、实时日志、事件、删除、AI 诊断
 - Deployment 管理：副本扩缩容
 - 命名空间与节点总览
 
@@ -138,146 +166,113 @@ Ingress → Service → Pod ← ReplicaSet ← Deployment
 - 智能滚动（不打扰查看历史）
 - 一键导出 `.log`
 
-### 六、安全与审计
+### 六、集群巡检
 
-- JWT 认证 + RBAC 权限分级
-- 操作审计（所有变更留痕）
+- 11 条规则：未配 requests/limits、未配探针、镜像 latest、单副本、无 endpoints 等
+- 输出健康分 + 分级问题清单 + 修复建议
+- 集成为 Copilot 工具
 
-### 七、监控可视化
+### 七、RAG 知识库
 
-- Dashboard 总览（4 个量化指标 + 节点卡片 + 趋势图）
-- 告警历史（AI 建议 + 状态管理）
-- ECharts 图表
+- 历史告警向量化索引（ChromaDB + BGE）
+- 诊断时自动检索相似案例
+- 独立知识库管理页（状态、检索测试、索引/清空）
+
+### 八、安全与审计
+
+- JWT 认证 + RBAC 权限分级（管理员/只读）
+- 操作审计（含 AI 操作，标记 `COPILOT_XXX`）
 
 ------
 
 ## 🛠️ 技术栈
 
-| 层次         | 技术                                                         |
-| :----------- | :----------------------------------------------------------- |
-| **采集器**   | Python 3.9、psutil、prometheus_client、pymysql               |
-| **后端**     | FastAPI、Kubernetes Python Client、PyJWT、bcrypt、Pydantic、OpenAI SDK |
-| **前端**     | Vue3、TypeScript、Element Plus、ECharts、Pinia、Vue Router   |
-| **存储**     | MySQL 8.0、Prometheus TSDB                                   |
-| **部署**     | Docker、Kubernetes（DaemonSet/Deployment/Service/RBAC）      |
-| **AI**       | DeepSeek API（Function Calling / SSE）                       |
-| **通信**     | HTTP、SSE、WebSocket                                         |
-| **告警治理** | 滑动窗口、冷却机制、告警聚合、量化指标                       |
+| 层次          | 技术                                                         |
+| :------------ | :----------------------------------------------------------- |
+| **采集器**    | Python 3.9、psutil、prometheus_client、pymysql               |
+| **后端**      | FastAPI、Kubernetes Python Client、PyJWT、bcrypt、Pydantic、OpenAI SDK |
+| **前端**      | Vue3、TypeScript、Element Plus、ECharts、Pinia、Vue Router   |
+| **存储**      | MySQL 8.0、Prometheus TSDB                                   |
+| **AI**        | DeepSeek API（Function Calling / SSE）                       |
+| **Embedding** | BGE-large-zh-v1.5（硅基流动 API）                            |
+| **向量库**    | ChromaDB（PersistentClient）                                 |
+| **部署**      | Docker、Kubernetes（DaemonSet/Deployment/Service/RBAC）      |
+| **通信**      | HTTP、SSE、WebSocket                                         |
+| **告警治理**  | 滑动窗口、冷却机制、告警聚合、量化指标                       |
 
 ------
 
 ## 📁 项目结构
 
-```properties
-aiops-platform/
-│
-├── backend/                              # Web 后端（FastAPI）
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── config.py                     # 全局配置
-│   │   └── security.py                   # JWT + bcrypt
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── database.py                   # 数据库连接
-│   │   └── schemas.py                    # Pydantic 模型
-│   ├── routers/
-│   │   ├── __init__.py
-│   │   ├── auth.py                       # 认证路由
-│   │   ├── pods.py                       # Pod 管理 + AI 诊断
-│   │   ├── deployments.py                # 副本管理
-│   │   ├── metrics.py                    # 监控查询
-│   │   ├── alerts.py                     # 告警 + 量化指标
-│   │   ├── audit.py                      # 审计日志
-│   │   ├── topology.py                   # 服务拓扑
-│   │   └── copilot.py                    # AI Copilot（SSE）
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── k8s_service.py                # K8s API 封装
-│   │   ├── prometheus_service.py         # Prometheus 查询
-│   │   ├── topology_service.py           # 拓扑推导
-│   │   ├── alert_service.py              # 告警管理
-│   │   ├── audit_service.py              # 审计记录
-│   │   ├── ai_log_service.py             # AI 日志分析
-│   │   ├── ai_diagnose_service.py        # 多信号融合诊断
-│   │   ├── copilot_tools.py              # Copilot 工具定义
-│   │   └── copilot_service.py            # Copilot Function Calling
-│   ├── Dockerfile.backend
-│   ├── main.py                           # FastAPI 入口 + WebSocket
-│   └── requirements.txt
-│
-├── collector/                            # 采集器（DaemonSet）
-│   ├── monitor.py                        # 主采集循环 + 滑动窗口告警
-│   ├── aggregation.py                    # 告警聚合器
-│   ├── Prometheus_config.py              # 指标暴露
-│   ├── AI.py                             # AI 告警 + 聚合分析
-│   ├── alter.py                          # Webhook 告警
-│   ├── history.py                        # 历史查询
-│   ├── mysql_config.py                   # MySQL 写入
-│   ├── load_config.py                    # 配置加载
-│   ├── logger.py                         # 日志输出
-│   ├── Dockerfile
-│   └── requirements.txt
-│
-├── frontend/                             # Web 前端（Vue3）
-│   ├── src/
-│   │   ├── api/
-│   │   │   ├── request.ts                # Axios 封装
-│   │   │   ├── auth.ts
-│   │   │   ├── pods.ts
-│   │   │   ├── deployments.ts
-│   │   │   ├── metrics.ts
-│   │   │   ├── alerts.ts
-│   │   │   ├── topology.ts
-│   │   │   └── copilot.ts                # SSE 流式请求
-│   │   ├── components/
-│   │   │   ├── AppBackground.vue
-│   │   │   ├── AppearanceSetting.vue
-│   │   │   ├── LogViewer.vue
-│   │   │   └── ResourceChart.vue
-│   │   ├── config/
-│   │   │   └── appearance.ts
-│   │   ├── layout/
-│   │   │   └── MainLayout.vue
-│   │   ├── router/
-│   │   │   └── index.ts
-│   │   ├── stores/
-│   │   │   ├── appearance.ts
-│   │   │   └── auth.ts
-│   │   ├── styles/
-│   │   │   └── styles.css
-│   │   ├── utils/
-│   │   │   ├── authStorage.ts
-│   │   │   └── imageFile.ts
-│   │   ├── views/
-│   │   │   ├── Login.vue                 # 登录页
-│   │   │   ├── Dashboard.vue             # 资源总览 + 量化指标
-│   │   │   ├── Topology.vue              # 服务拓扑
-│   │   │   ├── Copilot.vue               # AI Copilot
-│   │   │   ├── PodManage.vue             # Pod 管理
-│   │   │   ├── DeploymentManage.vue      # 副本管理
-│   │   │   ├── AlertHistory.vue          # 告警历史
-│   │   │   ├── AuditLog.vue              # 审计日志
-│   │   │
-│   │   ├── App.vue
-│   │   └── main.ts
-│   ├── Dockerfile
-│   ├── index.html
-│   ├── nginx.conf                        # 反代 + SSE + WebSocket
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
-│
-└── k8s/                                  # K8s 部署清单
-    ├── mysql.yaml                        # MySQL + 初始化
-    ├── collector-daemonset.yaml          # 采集器 DaemonSet
-    ├── rbac.yaml                         # SA + ClusterRole + Binding
-    ├── backend.yaml                      # 后端 Deployment + Service
-    ├── frontend.yaml                     # 前端 Deployment + Service
-    └── prometheus/
-        ├── prometheus-rbac.yaml
-        ├── prometheus-config.yaml
-        └── prometheus.yaml
 ```
+aiops-platform/
+├── collector/                       # 采集器（DaemonSet）
+│   ├── monitor.py                   # 主采集循环 + 滑动窗口告警
+│   ├── aggregation.py               # 告警聚合器
+│   ├── Prometheus_config.py         # 指标暴露
+│   ├── AI.py                        # AI 告警 + 聚合分析
+│   ├── alter.py                     # Webhook 告警（单条 + 聚合）
+│   ├── history.py / mysql_config.py
+│   ├── load_config.py / logger.py
+│   ├── requirements.txt / Dockerfile
+│
+├── backend/                         # Web 后端
+│   ├── main.py                      # FastAPI 入口 + WebSocket
+│   ├── core/
+│   │   ├── config.py                # 全局配置
+│   │   └── security.py              # JWT + bcrypt
+│   ├── models/
+│   │   ├── database.py / schemas.py
+│   ├── services/
+│   │   ├── k8s_service.py           # K8s API 封装
+│   │   ├── prometheus_service.py    # Prometheus 查询
+│   │   ├── topology_service.py      # 拓扑推导
+│   │   ├── health_check_service.py  # 集群巡检引擎
+│   │   ├── embedding_service.py     # BGE 文本向量化
+│   │   ├── rag_service.py           # ChromaDB 索引 + 检索
+│   │   ├── alert_service.py / audit_service.py
+│   │   ├── ai_log_service.py        # AI 日志分析
+│   │   ├── ai_diagnose_service.py   # 多信号诊断 + RAG 集成
+│   │   ├── copilot_tools.py         # 15 个工具定义 + 执行器
+│   │   └── copilot_service.py       # Copilot Function Calling
+│   ├── routers/
+│   │   ├── auth.py / pods.py / deployments.py
+│   │   ├── metrics.py / alerts.py / audit.py
+│   │   ├── topology.py / copilot.py
+│   │   ├── health_check.py          # 集群巡检路由
+│   │   └── rag.py                   # RAG 索引/检索路由
+│   ├── requirements.txt
+│   └── Dockerfile.backend
+│
+├── frontend/                        # Web 前端
+│   ├── src/
+│   │   ├── api/                     # 8 个 API 封装
+│   │   ├── views/                   # 10 个页面
+│   │   │   ├── Login.vue
+│   │   │   ├── Dashboard.vue        # 资源总览 + 量化指标
+│   │   │   ├── Topology.vue         # 服务拓扑
+│   │   │   ├── Copilot.vue          # AI Copilot（含确认卡片）
+│   │   │   ├── PodManage.vue        # Pod 管理 + AI 诊断
+│   │   │   ├── DeploymentManage.vue
+│   │   │   ├── AlertHistory.vue
+│   │   │   ├── HealthCheck.vue      # 集群巡检
+│   │   │   ├── RagManage.vue        # 知识库管理
+│   │   │   └── AuditLog.vue
+│   │   ├── components/ / layout/ / router/ / stores/
+│   │   ├── config/ / utils/
+│   ├── package.json / vite.config.ts / nginx.conf / Dockerfile
+│
+└── k8s/                             # K8s 部署清单
+    ├── mysql.yaml
+    ├── collector-daemonset.yaml
+    ├── rbac.yaml
+    ├── backend.yaml / frontend.yaml
+    └── prometheus/
+```
+
+
+
+------
 
 ## 🚀 快速开始
 
@@ -285,12 +280,13 @@ aiops-platform/
 
 - Kubernetes 集群（v1.20+）
 - Docker
-- DeepSeek API Key（用于 AI 功能）
+- DeepSeek API Key（AI 功能）
+- 硅基流动 API Key（RAG Embedding）
 
 ### 一键部署
 
 ```
-git clone https://github.com/kbnntg/aiops-platform.git
+git clone https://github.com/你的用户名/aiops-platform.git
 cd aiops-platform
 chmod +x deploy.sh
 ./deploy.sh
@@ -307,7 +303,8 @@ kubectl create secret generic aiops-secret -n privatization \
   --from-literal=mysql-password='root123456' \
   --from-literal=jwt-secret="$(openssl rand -hex 32)" \
   --from-literal=webhook-url='' \
-  --from-literal=api-key='sk-你的DeepSeekKey'
+  --from-literal=api-key='sk-你的DeepSeekKey' \
+  --from-literal=embedding-api-key='sk-你的硅基流动Key'
 
 # 2. 依次部署
 kubectl apply -f k8s/mysql.yaml
@@ -375,6 +372,12 @@ kubectl -n privatization get svc
 
   *根据定义的工具相应用户的请求*
 
+  ### RAG知识库
+
+  ![AICopilot](docs/images/rag.png)
+
+  *根据告警历史案例进行判断*
+
   ### 服务拓扑
 
   ![拓扑图](docs/images/topology.png)
@@ -383,7 +386,7 @@ kubectl -n privatization get svc
 
   ------
 
- ## 💡 技术难点与解决方案
+## 💡 技术难点与解决方案
 
 ### 1. 容器内采集宿主机指标
 
@@ -416,15 +419,25 @@ kubectl -n privatization get svc
 **根因**：Nginx 默认缓冲 SSE 响应。
 **解决**：响应头加 `X-Accel-Buffering: no`，Nginx 加 `proxy_buffering off`。
 
-### 7. Python 依赖版本冲突
+### 7. ChromaDB sqlite3 版本不兼容
 
-**问题**：`openai==1.30.0` 与新版 `httpx` 不兼容。
-**解决**：升级 `openai>=1.55.0` + 显式声明 `httpx>=0.27.0`。
+**问题**：CentOS 7 系统 sqlite3 < 3.35.0，ChromaDB 启动报错。
+**解决**：安装 `pysqlite3-binary`，在 `rag_service.py` 顶部替换 `sqlite3` 模块。
 
-### 8. RBAC 权限不足
+### 8. ChromaDB metadata 不接受 datetime
 
-**问题**：拓扑推导报 `Forbidden: services/replicasets/ingresses`。
-**解决**：`ClusterRole` 补齐三类资源权限。
+**问题**：从 MySQL 查出的 `triggered_at` 是 datetime 对象，Chroma 只接受 str/int/float/bool。
+**解决**：`str(a.get('triggered_at', ''))` 显式转换。
+
+### 9. Python 依赖版本冲突
+
+**问题**：`openai==1.30.0` 与新版 `httpx` 不兼容；`numpy 2.0` 与 `chromadb 0.4.24` 不兼容。
+**解决**：`openai>=1.55.0` + `httpx>=0.27.0` + `numpy<2.0`。
+
+### 10. RBAC 权限不足
+
+**问题**：拓扑推导报 `Forbidden: services/replicasets/ingresses`；巡检报 `Forbidden: endpoints`。
+**解决**：`ClusterRole` 按需补齐资源权限。
 
 ------
 
@@ -443,15 +456,16 @@ kubectl -n privatization get svc
 
 ### 后端
 
-| 变量                  | 说明            |
-| :-------------------- | :-------------- |
-| `SECRET_KEY`          | JWT 签名密钥    |
-| `MYSQL_*`             | MySQL 连接信息  |
-| `PROMETHEUS_URL`      | Prometheus 地址 |
-| `API_KEY` / `API_URL` | DeepSeek API    |
-| `LOG_MODEL_NAME`      | 日志分析模型    |
-| `DIAGNOSE_MODEL_NAME` | 诊断模型        |
-| `COPILOT_MODEL_NAME`  | Copilot 模型    |
+| 变量                                                         | 说明                |
+| :----------------------------------------------------------- | :------------------ |
+| `SECRET_KEY`                                                 | JWT 签名密钥        |
+| `MYSQL_*`                                                    | MySQL 连接信息      |
+| `PROMETHEUS_URL`                                             | Prometheus 地址     |
+| `API_KEY` / `API_URL`                                        | DeepSeek API        |
+| `LOG_MODEL_NAME` / `DIAGNOSE_MODEL_NAME` / `COPILOT_MODEL_NAME` | 各场景模型          |
+| `EMBEDDING_API_KEY` / `EMBEDDING_API_URL` / `EMBEDDING_MODEL` | BGE Embedding       |
+| `CHROMA_PERSIST_DIR`                                         | ChromaDB 持久化目录 |
+| `ANONYMIZED_TELEMETRY`                                       | 关闭遥测            |
 
 ------
 
@@ -459,11 +473,12 @@ kubectl -n privatization get svc
 
 | 指标         | 数值                                    |
 | :----------- | :-------------------------------------- |
-| 代码文件     | 100+                                    |
-| 后端接口     | 22                                      |
-| 前端页面     | 8                                       |
-| AI 能力      | 5 层                                    |
-| Copilot 工具 | 10 个                                   |
+| 代码文件     | 110+                                    |
+| 后端接口     | 26                                      |
+| 前端页面     | 10                                      |
+| AI 能力      | 7 层                                    |
+| Copilot 工具 | 15 个                                   |
+| 巡检规则     | 11 条                                   |
 | 告警治理策略 | 滑动窗口 + 冷却 + 聚合 + 量化           |
 | K8s 资源     | DaemonSet × 1、Deployment × 5、RBAC × 3 |
 
@@ -471,16 +486,11 @@ kubectl -n privatization get svc
 
 ## 🎯 后续规划
 
-- □ 动态阈值（EWMA / 3-sigma）
-- □ 告警规则在线配置
-- □ Copilot 支持多轮修改操作（扩容/删除）
-- □ 多集群管理
-- □ Grafana 集成
-
-------
-
-## 📄 License
-
-MIT License
-
+- 故障复盘报告（Postmortem）自动生成
+- SLO / 错误预算定义与监控
+- 告警与变更关联分析（可疑变更标记）
+- 动态阈值（EWMA / 3-sigma）
+- 多集群管理
+- Grafana 集成
+- ChromaDB 改用 PVC 持久化 + 独立部署
   
