@@ -17,6 +17,7 @@ AI：（看到真实数据）"node-monitor-zq52h 重启 3 次最多"
 """
 from typing import Dict, Any
 
+from services.healthy_check_service import HealthCheckService
 from services.k8s_service import K8sService
 from services.prometheus_service import PrometheusService
 from services.topology_service import TopologyService
@@ -211,6 +212,83 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "scale_deployment",
+            "description": "扩容或缩容 Deployment 的副本数。这是写操作，需要用户确认后才会执行。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "namespace": {"type": "string", "description": "命名空间"},
+                    "name": {"type": "string", "description": "Deployment 名称"},
+                    "replicas": {"type": "integer", "description": "目标副本数"},
+                },
+                "required": ["namespace", "name", "replicas"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "restart_deployment",
+            "description": "触发 Deployment 滚动重启。这是写操作，需要用户确认后才会执行。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "namespace": {"type": "string"},
+                    "name": {"type": "string", "description": "Deployment 名称"},
+                },
+                "required": ["namespace", "name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_pod",
+            "description": "删除指定 Pod（会由 Deployment 自动重建）。这是写操作，需要用户确认后才会执行。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "namespace": {"type": "string"},
+                    "name": {"type": "string", "description": "Pod 名称"},
+                },
+                "required": ["namespace", "name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cordon_node",
+            "description": "将节点标记为不可调度（cordon），用于维护前驱逐 Pod。这是写操作，需要用户确认后才会执行。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "节点名称"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "health_check",
+            "description": "对集群做一次巡检，按规则检查配置问题（未配 resources、未配探针、单副本、镜像 latest 等），返回健康分和问题清单。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "namespace": {
+                        "type": "string",
+                        "description": "只巡检指定命名空间（可选，不传则巡检全部）",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "diagnose_pod",
             "description": "对指定 Pod 进行多信号融合诊断（指标+日志+事件+告警），调用大模型分析根因。耗时长（10~30秒）。",
             "parameters": {
@@ -225,6 +303,8 @@ TOOL_SCHEMAS = [
     },
 ]
 
+TOOL_SCAL = {"scale_deployment", "restart_deployment", "delete_pod", "cordon_node"}
+
 
 # 2. 工具执行器（AI 调工具时真正执行）
 class ToolExecutor:
@@ -236,6 +316,15 @@ class ToolExecutor:
 
     # 执行工具，返回结果
     def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+        # 判断执行工具是否在TOOL_SCAL集中是给 copilot_service.py 判断用的
+        if tool_name in TOOL_SCAL:
+            return {
+                '_need_confirm': True,
+                'tool': tool_name,
+                'arguments': arguments,
+                'description': self._describe_write_tool(tool_name, arguments)
+            }
+
         # 根据工具名发到不同方法，输入list_pod就是_tool_list_pod
         handler = getattr(self, f'_tool_{tool_name}', None)
         if not handler:
@@ -247,6 +336,17 @@ class ToolExecutor:
         except Exception as e:
             return {'error': f"工具执行失败{e}"}
 
+    # 用户确认后就执行该方法
+    def execute_write(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+        # 用户确认后真正执行写操作
+        handler = getattr(self, f'_tool_{tool_name}', None)
+        if not handler:
+            return {'error': f'未知写工具{tool_name}'}
+        try:
+            return handler(**arguments)
+        except Exception as e:
+            return {'error': f'写操作执行失败{e}'}
+
     # 找到工具对应的_tool_xxx方法，这些方法去掉前缀_tool_其他必须要和工具中定义的名字一致
     def _tool_list_pods(self, namespace: str = 'privatization'):
         pods = self.k8s.list_pods(namespace=namespace)
@@ -257,6 +357,17 @@ class ToolExecutor:
             'node': p.get('node'),
             'restarts': p.get('restarts', 0),
         } for p in pods]
+
+    # 巡检执行
+    def _tool_health_check(self, namespace: str = None):
+        svc = HealthCheckService()
+        result = svc.run_check(namespace=namespace)
+        return {
+            "score": result["score"],
+            "total": result["total"],
+            "summary": result["summary"],
+            "top_issues": result["issues"][:5],
+        }
 
     # 找日志
     def _tool_get_pod_logs(self, namespace: str, name: str, tail_lines: int = 100):
@@ -325,3 +436,30 @@ class ToolExecutor:
     def _tool_diagnose_pod(self, namespace: str, name: str):
         return {
             "message": "多信号诊断需要调用 /api/pods/{name}/diagnose 接口，暂不支持在 Copilot 中调用。请提示用户手动使用诊断功能。"}
+
+    # 扩容工具
+    def _tool_scale_deployment(self, namespace: str, name: str, replicas: int):
+        return self.k8s.scale_deployment(namespace=namespace, name=name, replicas=replicas)
+
+    # 重启操作
+    def _tool_restart_deployment(self, namespace: str, name: str):
+        return self.k8s.restart_deployment(namespace=namespace, name=name)
+
+    # 删除pod
+    def _tool_delete_pod(self, namespace: str, name: str):
+        return self.k8s.delete_pod(namespace=namespace, name=name)
+
+    # 将节点调度
+    def _tool_cordon_node(self, name: str):
+        return self.k8s.cordon_node(name=name)
+
+    def _describe_write_tool(self, tool_name: str, args: Dict) -> str:
+        if tool_name == 'scale_deployment':
+            return f"将 {args.get('namespace')}/{args.get('name')} 的副本数调整为 {args.get('replicas')}"
+        if tool_name == 'restart_deployment':
+            return f"触发 {args.get('namespace')}/{args.get('name')} 滚动重启"
+        if tool_name == 'delete_pod':
+            return f"删除 Pod {args.get('namespace')}/{args.get('name')}"
+        if tool_name == "cordon_node":
+            return f"将节点 {args.get('name')} 标记为不可调度"
+        return f"执行 {tool_name}"

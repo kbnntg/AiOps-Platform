@@ -139,6 +139,22 @@ class CopilotService:
                 # 执行工具，tool_name就传进copilot_tools的execute去，再在这个方法中根据传入的tool_name调用其他方法
                 result = self.executor.execute(tool_name, arguments)
 
+                # 检测executor.execute中是否有确认字段（_confirm)有的,isinstance里传的参数必须是dict
+                if isinstance(result, dict) and result.get("_need_confirm"):
+                    yield self._sse({
+                        'type': 'tool_start',
+                        'tool': tool_name,
+                        'arguments': arguments,
+                    })
+                    # 让AI看到确认字段
+                    yield self._sse({
+                        'type': 'confirm',
+                        'tool': tool_name,
+                        'arguments': arguments,
+                        'description': result['description']
+                    })
+                    return
+
                 # 推送工具结果
                 yield self._sse({
                     "type": "tool_result",

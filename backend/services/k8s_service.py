@@ -146,3 +146,42 @@ class K8sService:
             'name': n.metadata.name,
             "status": n.status.conditions[-1].type if n.status.conditions else "Unknown",
         } for n in nodes.items]
+
+    # 创建滚动更新deployment方法
+    def restart_deployment(self, namespace: str, name: str) -> Dict:
+        # 滚动更新机制是更改任意参数会触发更新，这里可以更新一个没用的参数来触发
+        from datetime import datetime, timezone
+        # 改个时间戳
+        now = datetime.now(timezone.utc).isoformat()
+
+        # 更改参数
+        body = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "kubectl.kubernetes.io/restartedAt": now
+                        }
+                    }
+                }
+            }
+        }
+        # 触发更改
+        self.apps_v1.patch_namespaced_deployment_scale(namespace=namespace, name=name, body=body)
+        return {'message': f"Deployment{name}已触发滚动更新"}
+
+    # 标记节点为不可调度
+    def cordon_node(self, name: str) -> Dict:
+        body = {
+            "spec": {"unschedulable": True}
+        }
+        self.core_v1.patch_node(name=name, body=body)
+        return {'message': f'节点{name}已标为不可调度'}
+
+    # 取消不可调度
+    def uncordon_node(self, name: str) -> Dict:
+        body = {
+            "spec": {"unschedulable": False}
+        }
+        self.core_v1.patch_node(name=name, body=body)
+        return {'message': f'节点{name}已标为可调度'}

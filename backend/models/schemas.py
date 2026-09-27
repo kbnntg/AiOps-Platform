@@ -39,3 +39,9 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: Optional[List[ChatMessage]] = None
+
+
+# 让AI执行编辑工具
+class ExecuteConfirmRequest(BaseModel):
+    tool: str
+    arguments: dict

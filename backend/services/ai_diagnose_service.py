@@ -71,6 +71,48 @@ def format_alert_for_ai(alerts: list) -> str:
 
 
 # AI告警
+def _rag_search(signals: dict, top_k: int = 3) -> str:
+    # 接收metrics、events等进行文本转换，转换为prompt认识的文本
+    try:
+        from services.rag_service import RagService
+        rag = RagService()
+
+        # 知识库为空就返回空的
+        if rag.count_RAG() == 0:
+            return '知识库为空，没有历史案例'
+
+        # 检索查询文本，从指标和事件提取关键信息
+        query_parts = []
+        # 资源参数
+        metrics = signals.get('metrics_text', '')
+        if metrics and '失败' not in metrics:
+            query_parts.append(metrics[:300])
+        # 事件
+        events = signals.get('events_text', '')
+        if events and events != '无事件':
+            # 只要最近300行
+            query_parts.append(events[:300])
+
+        query = ' '.join(query_parts) if query_parts else '系统异常'
+        query = query[:500]
+
+        # 将文本传入到RAG的search函数中，进行检索信息获取
+        hits = rag.search(query=query, top_k=top_k, th=0.4)
+        if not hits:
+            return '未找到相近的·历史案例'
+
+        # 格式化
+        lines = []
+        for i, h in enumerate(hits, 1):
+            lines.append(f"[案例{i}] 相似度{h['similarity']}")
+            lines.append(h['text'])
+            lines.append("")
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"RAG 检索失败: {e}")
+        return "历史案例检索失败（不影响诊断）。"
+
+
 def diagnose_pod(signals: dict) -> str:
     """多信号融合根因诊断，返回 Markdown 格式的分析结果"""
     api_key = os.getenv("API_KEY")
@@ -79,6 +121,9 @@ def diagnose_pod(signals: dict) -> str:
 
     if not api_key:
         return "未配置 API_KEY，无法进行 AI 诊断"
+
+    # RAG判断，接收四元告警传输到检索方法中
+    rag_text = _rag_search(signals)
 
     prompt = f"""你是一个资深 SRE 和 Kubernetes 专家。现在需要对一个 Pod 进行综合故障诊断。
 
@@ -96,6 +141,9 @@ def diagnose_pod(signals: dict) -> str:
 
 ## 信号 4：历史告警记录（最近 10 条）
 {signals.get('alerts_text', '无历史告警')}
+
+## 历史相似案例（供参考）
+{rag_text}
 
 ---
 

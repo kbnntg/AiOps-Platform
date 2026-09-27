@@ -8,3 +8,6 @@ requests==2.32.3
 pydantic==2.7.4
 openai>=1.55.0
 httpx>=0.27.0
+chromadb==0.4.24
+numpy<2.0
+pysqlite3-binary
