@@ -26,7 +26,7 @@
         <div v-if="messages.length === 0" class="welcome">
           <div class="welcome-icon">🤖</div>
           <h2>AI 运维助手</h2>
-          <p>我可以帮你查询 K8s 集群的状态，比如：</p>
+          <p>我可以帮你查询和管理 K8s 集群，比如：</p>
           <div class="suggestions">
             <div
               v-for="s in suggestions"
@@ -73,6 +73,46 @@
             <div v-if="msg.loading && !msg.content" class="typing">
               <span></span><span></span><span></span>
             </div>
+
+            <!-- 写操作确认卡片 -->
+            <div v-if="msg.pendingAction" class="confirm-card" :class="msg.pendingAction.status">
+              <div class="confirm-header">
+                <el-icon><WarningFilled /></el-icon>
+                <span>需要确认的写操作</span>
+              </div>
+              <div class="confirm-body">
+                {{ msg.pendingAction.description }}
+              </div>
+              <div class="confirm-args" v-if="Object.keys(msg.pendingAction.arguments).length > 0">
+                <span v-for="(v, k) in msg.pendingAction.arguments" :key="k" class="arg-tag">
+                  {{ k }}: {{ v }}
+                </span>
+              </div>
+
+              <!-- 待确认 -->
+              <div v-if="msg.pendingAction.status === 'pending'" class="confirm-actions">
+                <el-button size="small" @click="cancelAction(msg)">取消</el-button>
+                <el-button size="small" type="danger" @click="confirmAction(msg)">
+                  确认执行
+                </el-button>
+              </div>
+
+              <!-- 执行中 -->
+              <div v-else-if="msg.pendingAction.status === 'executing'" class="confirm-status">
+                <el-icon class="spin"><Loading /></el-icon> 执行中...
+              </div>
+
+              <!-- 已完成 -->
+              <div v-else-if="msg.pendingAction.status === 'done'" class="confirm-status done">
+                <el-icon><CircleCheck /></el-icon> 已执行
+                <div class="confirm-result">{{ msg.pendingAction.result }}</div>
+              </div>
+
+              <!-- 已取消 -->
+              <div v-else-if="msg.pendingAction.status === 'cancelled'" class="confirm-status cancelled">
+                <el-icon><CircleClose /></el-icon> 已取消
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -105,13 +145,22 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { streamChat, getCopilotTools } from '@/api/copilot'
+import { streamChat, getCopilotTools, executeCopilotTool } from '@/api/copilot'
+
+interface PendingAction {
+  tool: string
+  arguments: any
+  description: string
+  status: 'pending' | 'executing' | 'done' | 'cancelled'
+  result?: string
+}
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
   loading?: boolean
   toolCalls?: Array<{ tool: string; status: 'running' | 'done' }>
+  pendingAction?: PendingAction
 }
 
 const messages = ref<Message[]>([])
@@ -124,7 +173,7 @@ const suggestions = [
   '现在有哪些 Pod？',
   '最近有告警吗？',
   '集群有几个节点？',
-  'nginx 这个 Deployment 有几个副本？',
+  '把 nginx 扩容到 3 个副本',
 ]
 
 // 加载工具列表
@@ -171,8 +220,8 @@ async function sendMessage(text: string) {
 
   // 3. 准备历史（排除当前 AI 占位消息）
   const history = messages.value
-    .slice(0, -1)   // 排除刚加的 AI 占位
-    .filter((m) => m.content)   // 过滤掉空消息
+    .slice(0, -1)
+    .filter((m) => m.content)
     .map((m) => ({ role: m.role, content: m.content }))
 
   try {
@@ -182,7 +231,19 @@ async function sendMessage(text: string) {
         aiMsg.toolCalls!.push({ tool: event.tool, status: 'running' })
         scrollToBottom()
       } else if (event.type === 'tool_result') {
-        // 把最后一个 running 改成 done
+        const last = aiMsg.toolCalls!.findLast((t) => t.status === 'running')
+        if (last) last.status = 'done'
+        scrollToBottom()
+      } else if (event.type === 'confirm') {
+        // 写操作：收到确认事件
+        aiMsg.pendingAction = {
+          tool: event.tool,
+          arguments: event.arguments,
+          description: event.description,
+          status: 'pending',
+        }
+        aiMsg.loading = false
+        // 把 tool_start 标为完成（因为工具没执行，只是提了确认请求）
         const last = aiMsg.toolCalls!.findLast((t) => t.status === 'running')
         if (last) last.status = 'done'
         scrollToBottom()
@@ -203,6 +264,30 @@ async function sendMessage(text: string) {
     loading.value = false
     scrollToBottom()
   }
+}
+
+// ========== 写操作确认 ==========
+async function confirmAction(msg: Message) {
+  if (!msg.pendingAction) return
+  msg.pendingAction.status = 'executing'
+  try {
+    const res: any = await executeCopilotTool(
+      msg.pendingAction.tool,
+      msg.pendingAction.arguments
+    )
+    msg.pendingAction.status = 'done'
+    msg.pendingAction.result = res.result?.message || JSON.stringify(res.result)
+    ElMessage.success('执行成功')
+  } catch (e: any) {
+    msg.pendingAction.status = 'pending'
+    ElMessage.error(`执行失败: ${e.message}`)
+  }
+}
+
+function cancelAction(msg: Message) {
+  if (!msg.pendingAction) return
+  msg.pendingAction.status = 'cancelled'
+  ElMessage.info('已取消')
 }
 
 function truncate(s: string, n: number): string {
@@ -491,7 +576,86 @@ onMounted(loadTools)
   30% { transform: translateY(-6px); opacity: 1; }
 }
 
-/* 输入区 */
+/* ========== 写操作确认卡片 ========== */
+.confirm-card {
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  animation: fadeIn 0.3s ease;
+}
+.confirm-card.done {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+.confirm-card.cancelled {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  opacity: 0.6;
+}
+
+.confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b45309;
+  margin-bottom: 8px;
+}
+.confirm-card.done .confirm-header { color: #16a34a; }
+.confirm-card.cancelled .confirm-header { color: #64748b; }
+
+.confirm-body {
+  font-size: 14px;
+  color: #1e293b;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.confirm-args {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.arg-tag {
+  font-size: 11px;
+  font-family: Consolas, monospace;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  color: #64748b;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.confirm-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #64748b;
+}
+.confirm-status.done { color: #16a34a; }
+.confirm-status.cancelled { color: #94a3b8; }
+
+.confirm-result {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #475569;
+  font-family: Consolas, monospace;
+}
+
+/* ========== 输入区 ========== */
 .input-area {
   padding: 16px 20px;
   border-top: 1px solid #f1f5f9;

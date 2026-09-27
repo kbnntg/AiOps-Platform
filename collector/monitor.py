@@ -205,7 +205,7 @@ def main():
                     })
             # 调用AI进行分析处理，alerts就是汇聚告警参数
             if aggregator.should_flush():
-                alerts = aggregator.flush()
+                alerts, count = aggregator.flush()
                 print(f'[聚合] 窗口到期，聚合 {len(alerts)} 条告警')
 
                 if alerts:
@@ -213,6 +213,17 @@ def main():
                     aggregate_advice = AI.ai_aggregate(alerts)
                     # 发送URL请求
                     log_alter_aggregated(cfg['URL'], alerts, aggregate_advice)
+
+                    # 写入数据库（带 raw_count）
+                    if cfg['cursor']:
+                        insert_alert_history(cfg['cursor'], cfg['conn'], {
+                            'resource': '聚合',
+                            'value': 0,
+                            'threshold': 0,
+                            'node': node_name,
+                            'ai_advice': aggregate_advice,
+                            'raw_count': count,  # ← 记录聚合了多少条
+                        })
 
             time.sleep(cfg['INTERVAL'])
 

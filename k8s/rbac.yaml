@@ -18,6 +18,7 @@ rules:
     - namespaces
     - nodes
     - services
+    - endpoints
   verbs: ["get", "list", "watch"]
 
 # 删除 Pod（高危操作）

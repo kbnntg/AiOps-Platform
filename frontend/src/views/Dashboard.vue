@@ -51,6 +51,33 @@
       </el-col>
     </el-row>
 
+    <!-- ========== 告警趋势（数据来自 /api/alerts/metrics 的 trend 字段） ========== -->
+    <div class="chart-card trend-card">
+      <div class="chart-header">
+        <div class="chart-title">
+          <div class="dot" style="background: #8b5cf6"></div>
+          <h3>告警趋势（近 7 天）</h3>
+        </div>
+        <div class="chart-actions">
+          <el-tag v-if="alertStore.degraded" type="info" effect="plain" size="small">
+            告警数据暂不可用
+          </el-tag>
+          <el-tag
+            v-else-if="alertStore.unhandledCount > 0"
+            type="danger"
+            effect="dark"
+            size="small"
+            class="clickable-tag"
+            @click="router.push('/alerts')"
+          >
+            当前未处理 {{ alertStore.unhandledCount }} 条
+          </el-tag>
+          <el-tag v-else type="success" effect="plain" size="small">当前无未处理告警</el-tag>
+        </div>
+      </div>
+      <AlertTrendChart :data="trendData" height="240px" />
+    </div>
+
     <!-- ========== 节点状态卡片 ========== -->
     <el-row :gutter="20" style="margin-top: 20px">
       <el-col :span="8" v-for="(node, idx) in nodes" :key="node.name">
@@ -94,23 +121,32 @@
       </el-col>
     </el-row>
 
-    <!-- ========== CPU 趋势 ========== -->
+    <!-- ========== 资源趋势 ========== -->
+    <div class="trend-header">
+      <div class="trend-title">
+        <el-icon><TrendCharts /></el-icon>
+        <span>资源趋势</span>
+      </div>
+      <el-radio-group v-model="hours" size="small" @change="loadCharts">
+        <el-radio-button :value="1">1小时</el-radio-button>
+        <el-radio-button :value="6">6小时</el-radio-button>
+        <el-radio-button :value="24">24小时</el-radio-button>
+        <el-radio-button :value="168">7天</el-radio-button>
+      </el-radio-group>
+    </div>
+
+    <!-- CPU 趋势 -->
     <div class="chart-card">
       <div class="chart-header">
         <div class="chart-title">
           <div class="dot" style="background: #6366f1"></div>
           <h3>CPU 使用率趋势</h3>
         </div>
-        <el-radio-group v-model="hours" size="small" @change="loadCharts">
-          <el-radio-button :value="1">1小时</el-radio-button>
-          <el-radio-button :value="6">6小时</el-radio-button>
-          <el-radio-button :value="24">24小时</el-radio-button>
-        </el-radio-group>
       </div>
       <ResourceChart :data="cpuData" :height="'320px'" />
     </div>
 
-    <!-- ========== 内存趋势 ========== -->
+    <!-- 内存趋势 -->
     <div class="chart-card">
       <div class="chart-header">
         <div class="chart-title">
@@ -120,20 +156,44 @@
       </div>
       <ResourceChart :data="memData" :height="'320px'" />
     </div>
+
+    <!-- 磁盘趋势（接口 /api/metrics/disk 早已存在，此前前端未接入） -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">
+          <div class="dot" style="background: #f59e0b"></div>
+          <h3>磁盘使用率趋势</h3>
+        </div>
+      </div>
+      <ResourceChart :data="diskData" :height="'320px'" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { getNodes, getCpu, getMemory } from '@/api/metrics'
+import { computed, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { getNodes, getCpu, getMemory, getDisk } from '@/api/metrics'
 import { getAlertMetrics } from '@/api/alerts'
 import ResourceChart from '@/components/ResourceChart.vue'
+import AlertTrendChart from '@/components/AlertTrendChart.vue'
+import { useAlertStore } from '@/stores/alerts'
+
+const router = useRouter()
+const alertStore = useAlertStore()
 
 const nodes = ref<any[]>([])
 const cpuData = ref<any[]>([])
 const memData = ref<any[]>([])
+const diskData = ref<any[]>([])
 const hours = ref(1)
 const metrics = ref<any>(null)
+
+/** 近 7 天告警趋势（后端 /api/alerts/metrics 已返回，此前前端未展示） */
+const trendData = computed<any[]>(() => {
+  const trend = metrics.value?.trend
+  return Array.isArray(trend) ? trend : []
+})
 
 function getColor(v: number): string {
   if (v > 80) return '#f43f5e'
@@ -148,11 +208,35 @@ function formatDuration(seconds: number): string {
   return (seconds / 3600).toFixed(1) + 'h'
 }
 
-async function loadNodes() { nodes.value = await getNodes() as any }
-async function loadCharts() {
-  cpuData.value = await getCpu(hours.value) as any
-  memData.value = await getMemory(hours.value) as any
+/** 取出接口返回的序列数组，失败或结构异常时回退为空数组，避免整页图表崩掉 */
+function seriesOf(result: PromiseSettledResult<any>): any[] {
+  return result.status === 'fulfilled' && Array.isArray(result.value) ? result.value : []
 }
+
+async function loadNodes() {
+  try {
+    nodes.value = (await getNodes()) as any
+  } catch (e) {
+    nodes.value = []
+  }
+}
+
+// 快速切换时间范围时，只采用最后一次请求的结果，避免旧请求覆盖新数据
+let chartSeq = 0
+async function loadCharts() {
+  const seq = ++chartSeq
+  const range = hours.value
+  const [cpu, mem, disk] = await Promise.allSettled([
+    getCpu(range),
+    getMemory(range),
+    getDisk(range),
+  ])
+  if (seq !== chartSeq) return
+  cpuData.value = seriesOf(cpu)
+  memData.value = seriesOf(mem)
+  diskData.value = seriesOf(disk)
+}
+
 async function loadMetrics() {
   try {
     metrics.value = await getAlertMetrics()
@@ -353,4 +437,29 @@ onMounted(() => {
   border-radius: 50%;
   box-shadow: 0 0 8px currentColor;
 }
+
+/* ========== 告警趋势卡片 ========== */
+.trend-card { margin-top: 0; }
+.chart-actions { display: flex; align-items: center; gap: 8px; }
+.clickable-tag { cursor: pointer; transition: all 0.2s; }
+.clickable-tag:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35); }
+
+/* ========== 资源趋势小标题（时间范围选择器） ========== */
+.trend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 28px;
+  margin-bottom: 4px;
+  padding: 0 4px;
+}
+.trend-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.trend-title .el-icon { color: var(--primary); }
 </style>

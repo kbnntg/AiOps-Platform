@@ -20,6 +20,10 @@ spec:
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
+        volumeMounts:
+        - name: chroma-data
+          mountPath: /app/data/chroma
+
         env:
         - name: MYSQL_HOST
           value: "mysql-service"
@@ -48,6 +52,20 @@ spec:
           value: "https://api.deepseek.com/v1"
         - name: LOG_MODEL_NAME
           value: "deepseek-chat"
+        - name: EMBEDDING_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aiops-secret
+              key: embedding-api-key
+        - name: EMBEDDING_API_URL
+          value: "https://api.siliconflow.cn/v1"
+        - name: EMBEDDING_MODEL
+          value: "BAAI/bge-large-zh-v1.5"
+        - name: CHROMA_PERSIST_DIR
+          value: "/app/data/chroma"
+        - name: ANONYMIZED_TELEMETRY
+          value: "False"
+
         resources:
           requests:
             memory: "128Mi"
@@ -55,11 +73,19 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+
         readinessProbe:
           httpGet:
             path: /api/health
             port: 8000
           initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+      volumes:
+      - name: chroma-data
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

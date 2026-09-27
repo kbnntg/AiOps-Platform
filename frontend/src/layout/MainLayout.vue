@@ -16,10 +16,21 @@
                text-color="rgba(255,255,255,0.75)"
                active-text-color="#fff"
                class="side-menu">
-        <el-menu-item v-for="item in menuItems" :key="item.path" :index="item.path">
+        <el-menu-item
+          v-for="item in menuItems"
+          :key="item.path"
+          :index="item.path"
+          :class="{ 'has-alert': item.path === '/alerts' && alertStore.unhandledCount > 0 }"
+        >
           <el-icon><component :is="item.icon" /></el-icon>
           <template #title>
-            <span>{{ item.title }}</span>
+            <span class="menu-title-text">{{ item.title }}</span>
+            <el-badge
+              v-if="item.path === '/alerts' && alertStore.unhandledCount > 0"
+              :value="alertStore.unhandledCount"
+              :max="99"
+              class="menu-badge"
+            />
           </template>
         </el-menu-item>
       </el-menu>
@@ -35,6 +46,26 @@
           <span class="page-title">{{ $route.meta.title }}</span>
         </div>
         <div class="header-right">
+          <el-tooltip :content="alertTip" placement="bottom">
+            <el-badge
+              :value="alertStore.unhandledCount"
+              :max="99"
+              :hidden="alertStore.unhandledCount === 0"
+              :type="alertStore.degraded ? 'info' : 'danger'"
+              class="header-badge"
+            >
+              <el-icon
+                class="header-icon"
+                :class="{ 'is-degraded': alertStore.degraded }"
+                @click="router.push('/alerts')"
+              >
+                <Bell />
+              </el-icon>
+            </el-badge>
+          </el-tooltip>
+          <el-tooltip content="全屏大屏" placement="bottom">
+            <el-icon class="header-icon" @click="router.push('/screen')"><Monitor /></el-icon>
+          </el-tooltip>
           <el-tooltip content="更换背景" placement="bottom">
             <el-icon class="header-icon" @click="appearanceStore.openDrawer()"><Picture /></el-icon>
           </el-tooltip>
@@ -54,6 +85,13 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item command="screen">
+                  <el-icon><Monitor /></el-icon> 全屏大屏
+                </el-dropdown-item>
+                <el-dropdown-item command="notify">
+                  <el-icon><Bell /></el-icon>
+                  新告警提醒：{{ alertStore.notifyEnabled ? '已开启' : '已关闭' }}
+                </el-dropdown-item>
                 <el-dropdown-item command="appearance">
                   <el-icon><Picture /></el-icon> 更换背景
                 </el-dropdown-item>
@@ -88,6 +126,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppearanceStore } from '@/stores/appearance'
+import { useAlertStore } from '@/stores/alerts'
 import { ElMessage } from 'element-plus'
 import AppBackground from '@/components/AppBackground.vue'
 import AppearanceSetting from '@/components/AppearanceSetting.vue'
@@ -96,8 +135,16 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const appearanceStore = useAppearanceStore()
+const alertStore = useAlertStore()
 const isCollapse = ref(false)
 const isMobile = ref(window.innerWidth < 768)
+
+/** 顶栏铃铛的悬浮提示 */
+const alertTip = computed(() => {
+  if (alertStore.degraded) return '告警数据暂不可用（后端未连通）'
+  const n = alertStore.unhandledCount
+  return n > 0 ? `${n} 条未处理告警，点击查看` : '暂无未处理告警'
+})
 
 const menuItems = computed(() => {
   const items = [
@@ -107,6 +154,8 @@ const menuItems = computed(() => {
     { path: '/pods', title: 'Pod 管理', icon: 'Box' },
     { path: '/deployments', title: '副本管理', icon: 'Operation' },
     { path: '/alerts', title: '告警历史', icon: 'Bell' },
+    { path: '/health-check', title: '集群巡检', icon: 'FirstAidKit' },
+    { path: '/rag', title: '知识库', icon: 'Collection' },
   ]
   if (authStore.role === 'admin') items.push({ path: '/audit', title: '审计日志', icon: 'Document' })
   return items
@@ -118,11 +167,17 @@ function refreshPage() {
 
 function handleCommand(cmd: string) {
   if (cmd === 'logout') {
+    // 退出前清空告警角标与轮询，避免下一个用户看到上一个用户的数据
+    alertStore.reset()
     authStore.clearAuth()
     router.push('/login')
     ElMessage.success('已退出登录')
   } else if (cmd === 'appearance') {
     appearanceStore.openDrawer()
+  } else if (cmd === 'screen') {
+    router.push('/screen')
+  } else if (cmd === 'notify') {
+    alertStore.setNotifyEnabled(!alertStore.notifyEnabled)
   } else if (cmd === 'profile') {
     ElMessage.info('个人信息功能开发中')
   }
@@ -131,11 +186,14 @@ function handleCommand(cmd: string) {
 // 工作面板挂载时载入当前用户的外观配置（不同用户互不影响）
 onMounted(() => {
   appearanceStore.init(authStore.username)
+  // 未处理告警轮询：驱动侧边栏 / 顶栏角标与新告警提醒
+  alertStore.start()
 })
 
 // 离开工作面板（例如退出登录）时恢复默认外观，避免影响登录页
 onBeforeUnmount(() => {
   appearanceStore.clearDocumentEffect()
+  alertStore.stop()
 })
 </script>
 
@@ -189,7 +247,30 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   margin-bottom: 4px;
   transition: all 0.25s;
+  position: relative;
 }
+
+/* 有未处理告警时，菜单项右上角亮红点（折叠状态也能看到） */
+.side-menu :deep(.el-menu-item.has-alert)::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  right: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+  animation: alertBlink 2s ease-in-out infinite;
+}
+@keyframes alertBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.menu-title-text { flex: 1; }
+.menu-badge { margin-left: auto; }
+.menu-badge :deep(.el-badge__content) { border: none; }
 .side-menu :deep(.el-menu-item:hover) {
   background: rgba(139, 92, 246, 0.15) !important;
 }
@@ -234,6 +315,7 @@ onBeforeUnmount(() => {
 }
 
 .header-right { display: flex; align-items: center; gap: 16px; }
+.header-badge :deep(.el-badge__content) { border: none; }
 .header-icon {
   font-size: 18px;
   cursor: pointer;
@@ -246,6 +328,8 @@ onBeforeUnmount(() => {
   color: var(--primary);
   background: rgba(99, 102, 241, 0.08);
 }
+/* 后端不可达时铃铛变灰，避免误报"有告警" */
+.header-icon.is-degraded { color: #cbd5e1; }
 
 .user-info {
   display: flex;

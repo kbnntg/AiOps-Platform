@@ -4,6 +4,13 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'Login', component: () => import('@/views/Login.vue') },
+    // 全屏大屏：脱离工作台布局，独立占满整个视口
+    {
+      path: '/screen',
+      name: 'Screen',
+      component: () => import('@/views/Screen.vue'),
+      meta: { title: '全屏大屏' },
+    },
     {
       path: '/',
       component: () => import('@/layout/MainLayout.vue'),
@@ -15,6 +22,8 @@ const router = createRouter({
         { path: 'pods', name: 'PodManage', component: () => import('@/views/PodManage.vue'), meta: { title: 'Pod 管理', icon: 'Box' } },
         { path: 'deployments', name: 'DeploymentManage', component: () => import('@/views/DeploymentManage.vue'), meta: { title: '副本管理', icon: 'Operation' } },
         { path: 'alerts', name: 'AlertHistory', component: () => import('@/views/AlertHistory.vue'), meta: { title: '告警历史', icon: 'Bell' } },
+        { path: 'health-check', name: 'HealthCheck', component: () => import('@/views/HealthCheck.vue'), meta: { title: '集群巡检', icon: 'FirstAidKit' } },
+        { path: 'rag', name: 'RagManage', component: () => import('@/views/RagManage.vue'), meta: { title: '知识库', icon: 'Collection' } },
         { path: 'audit', name: 'AuditLog', component: () => import('@/views/AuditLog.vue'), meta: { title: '审计日志', icon: 'Document' } },
       ],
     },

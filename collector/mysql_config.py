@@ -20,13 +20,13 @@ def insert_data(cursor, conn, data):
 def insert_alert_history(cursor, conn, data):
     """告警历史写入，供 Web 平台展示"""
     sql = """
-        INSERT INTO alert_history (resource, value, threshold, node, ai_advice)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO alert_history (resource, value, threshold, node, ai_advice, raw_count)
+        VALUES (%s, %s, %s, %s, %s, %s)
     """
     try:
         cursor.execute(sql, (
             data['resource'], data['value'], data['threshold'],
-            data['node'], data['ai_advice']
+            data['node'], data['ai_advice'], data.get('raw_count', 1),    # 默认 1 条
         ))
         conn.commit()
     except Exception as e:

@@ -43,13 +43,14 @@ class AlertAggregator:
     # 取出所有告警并清空缓冲区
     def flush(self):
         if not self.alerts:
-            return False
+            return [], 0
         # 把告警参数拷贝过来
         snap = self.alerts.copy()
+        count = len(snap)
         # 清空原告警参数
         self.alerts.clear()
         self.window_start = None
-        return snap
+        return snap, count
 
     # 统计当前告警数
     def count(self) -> int:
