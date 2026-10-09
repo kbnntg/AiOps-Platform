@@ -63,7 +63,7 @@ def rag_search(query: str, top_k: int = 5, resource: str = None, user: dict = De
     rag = RagService()
 
     hits = rag.search(query=query, top_k=top_k, resource_filter=resource, th=0.4)
-    return {"quert": query, "hits": hits}
+    return {"query": query, "hits": hits}
 
 
 # 清空数据库

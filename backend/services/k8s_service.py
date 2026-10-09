@@ -17,6 +17,8 @@ from typing import List, Dict
 
 from kubernetes import config, client
 
+from services.redis_service import Session
+
 
 # 导入模块
 
@@ -58,8 +60,19 @@ class K8sService:
     # Pod的相关操作==============================
     # 创建列出所有pod的方法
     def list_pods(self, namespace: str = "default") -> List[Dict]:
+        cache = Session()
+        cache_key = f"pods:{namespace}"
+        cached = cache.get(cache_key)
+
+        if cached is not None:
+            return cached
+
         pods = self.core_v1.list_namespaced_pod(namespace=namespace)
-        return [self._format_pod(p) for p in pods.items]
+        result = [self._format_pod(p) for p in pods.items]
+
+        # 缓存时间
+        cache.set(cache_key, result, ttl=15)
+        return result
 
     # 创建出获取指定pod的方法
     def get_pod(self, namespace: str, name: str) -> Dict:
@@ -75,7 +88,8 @@ class K8sService:
     # 创建删除pod的方法
     def delete_pod(self, namespace: str, name: str) -> Dict:
         self.core_v1.delete_namespaced_pod(namespace=namespace, name=name)
-        return {"message": f'pod{name}已删除'}
+        Session().delete_prefix(f"pods:{namespace}")
+        return {"message": f"Pod {name} 已删除"}
 
     # 创建获取pod事件的方法
     def get_pod_event(self, namespace: str, name: str) -> List[Dict]:
@@ -151,10 +165,7 @@ class K8sService:
     def restart_deployment(self, namespace: str, name: str) -> Dict:
         # 滚动更新机制是更改任意参数会触发更新，这里可以更新一个没用的参数来触发
         from datetime import datetime, timezone
-        # 改个时间戳
         now = datetime.now(timezone.utc).isoformat()
-
-        # 更改参数
         body = {
             "spec": {
                 "template": {
@@ -166,9 +177,8 @@ class K8sService:
                 }
             }
         }
-        # 触发更改
-        self.apps_v1.patch_namespaced_deployment_scale(namespace=namespace, name=name, body=body)
-        return {'message': f"Deployment{name}已触发滚动更新"}
+        self.apps_v1.patch_namespaced_deployment(name=name, namespace=namespace, body=body)
+        return {'message': f"Deployment {name} 已触发滚动更新"}
 
     # 标记节点为不可调度
     def cordon_node(self, name: str) -> Dict:

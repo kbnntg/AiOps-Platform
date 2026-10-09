@@ -70,14 +70,35 @@ class EmbeddingService:
         return resp.data[0].embedding
 
     # 多条文本转向量
-    def embeds(self, text: List[str]) -> list[list[float]]:
-        # 判断是否有API
+    def embeds(self, texts: List[str], batch_size: int = 10) -> List[List[float]]:
+        # 飘零文本转向量
         if not self.api_key:
-            raise RuntimeError('未配置API_KEY')
-        response = self.client.embeddings.create(
-            model=self.model,
-            input=text,
-        )
-        # 按index排序，保证顺序和输入一致
-        sorted_data = sorted(response.data, key=lambda x: x.index)
-        return [d.embedding for d in sorted_data]
+            raise RuntimeError("未配置 EMBEDDING_API_KEY")
+        if not texts:
+            return []
+
+        all_embeddings = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            # 再次截断每条（保险）
+            batch = [t[:400] for t in batch]
+            try:
+                resp = self.client.embeddings.create(
+                    model=self.model,
+                    input=batch,
+                )
+                sorted_data = sorted(resp.data, key=lambda x: x.index)
+                all_embeddings.extend([d.embedding for d in sorted_data])
+            except Exception as e:
+                print(f"批量 embedding 失败（批次 {i}）：{e}")
+                # 降级：逐条调用，失败的用零向量占位
+                for t in batch:
+                    try:
+                        r = self.client.embeddings.create(model=self.model, input=t[:400])
+                        all_embeddings.append(r.data[0].embedding)
+                    except Exception as e2:
+                        print(f"单条 embedding 失败：{e2}")
+                        # 用零向量占位，保证数量和输入一致
+                        all_embeddings.append([0.0] * 1024)
+
+        return all_embeddings

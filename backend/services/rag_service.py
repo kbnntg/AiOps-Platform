@@ -139,7 +139,10 @@ class RagService:
             f"解决时间：{a.get('resolved_at', '')}",
         ]
         if a.get('ai_advice'):
-            parts.append(f"AI 分析建议：{a['ai_advice']}")
+            advice = str(a['ai_advice'])[:400]
+            parts.append(f"AI 分析建议：{advice}")
+        else:
+            parts.append("处理方式：已恢复（无详细记录）")
         return "\n".join(parts)
 
     # 三、检索RAG知识库，什么思路：前端发送药检所的文本、条数、资源值（默认可不选）、最小匹配值，假设0.5，使用1-余弦值小于该值的检索就不用看了

@@ -14,6 +14,7 @@ spec:
         app: aiops-backend
     spec:
       serviceAccountName: aiops-backend
+      terminationGracePeriodSeconds: 60
       containers:
       - name: backend
         image: aiops-backend:v1
@@ -65,6 +66,10 @@ spec:
           value: "/app/data/chroma"
         - name: ANONYMIZED_TELEMETRY
           value: "False"
+        - name: REDIS_HOST
+          value: "redis-service"
+        - name: REDIS_PORT
+          value: "6379"
 
         resources:
           requests:
@@ -85,7 +90,8 @@ spec:
 
       volumes:
       - name: chroma-data
-        emptyDir: {}
+        persistentVolumeClaim:
+          claimName: chroma-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -95,6 +101,10 @@ metadata:
 spec:
   selector:
     app: aiops-backend
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
   ports:
   - port: 8000
     targetPort: 8000

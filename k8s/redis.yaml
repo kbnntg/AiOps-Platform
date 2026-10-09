@@ -1,0 +1,87 @@
+# Headless Service（StatefulSet 必需）
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless
+  namespace: privatization
+spec:
+  clusterIP: None
+  selector:
+    app: aiops-redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+---
+# 普通 Service（应用连接用）
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: privatization
+spec:
+  selector:
+    app: aiops-redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+---
+# StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: aiops-redis
+  namespace: privatization
+spec:
+  serviceName: redis-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aiops-redis
+  template:
+    metadata:
+      labels:
+        app: aiops-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7.2-alpine
+        command:
+        - redis-server
+        - --appendonly
+        - "yes"                    # 开启 AOF 持久化
+        - --appendfsync
+        - everysec                 # 每秒刷盘
+        - --maxmemory
+        - "256mb"
+        - --maxmemory-policy
+        - allkeys-lru              # 内存满时淘汰最少用的 key
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "320Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        livenessProbe:
+          tcpSocket:
+            port: 6379
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 2Gi

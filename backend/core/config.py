@@ -18,6 +18,10 @@ class Setting:
     MYSQL_PORT = int(os.getenv('MYSQL_PORT', '3306'))
     MYSQL_DB = os.getenv("MYSQL_DB", "aiops_platform")
 
+    # Redis配置
+    REDIS_HOST = os.getenv('REDIS_HOST', 'redis-service')
+    REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+
     # Prometheus的
     PROMETHEUS_URL = os.getenv(
         "PROMETHEUS_URL",

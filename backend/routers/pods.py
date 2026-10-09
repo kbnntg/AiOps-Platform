@@ -69,6 +69,7 @@ def ai_search(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # AI混合分析
 @router.post('/{name}/diagnose')
 def diagnose_pod_api(
@@ -76,7 +77,6 @@ def diagnose_pod_api(
         name: str,
         user: dict = Depends(verity_token),
 ):
-
     # 导入ai_diagnose_service
     from services.ai_diagnose_service import (
         diagnose_pod,
@@ -95,7 +95,8 @@ def diagnose_pod_api(
             mem_data = prom.query_range('Free_use_percent', hout=1)
             disk_data = prom.query_range('Disk_use_percent', hout=1)
             # 将各组件获取得到的值传递到ai+diagnose_service中
-            metrics_text = format_metrics_for_ai(cpu_data=cpu_data, mem_data=mem_data, disk_data=disk_data, node_name=name)
+            metrics_text = format_metrics_for_ai(cpu_data=cpu_data, mem_data=mem_data, disk_data=disk_data,
+                                                 node_name=name)
 
         except Exception as e:
             metrics_text = f"指标获取失败{e}"
